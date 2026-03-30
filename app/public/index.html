@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Parkshare France — Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        header { text-align: center; margin-bottom: 25px; }
+        header h1 { color: #1a1a2e; font-size: 1.8em; }
+        header p { color: #7f8c8d; }
+
+        .stats-bar { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { background: white; padding: 15px 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; min-width: 150px; }
+        .stat-card h3 { font-size: 1.8em; color: #2c3e50; }
+        .stat-card p { color: #95a5a6; font-size: 0.8em; margin-top: 4px; }
+
+        .filters { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; max-width: 1400px; margin: 0 auto 20px; background: white; padding: 15px 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .filters select, .filters input[type="range"] { padding: 5px; font-size: 0.95em; }
+        .filters input[type="range"] { width: 220px; }
+
+        .dashboard-grid { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 20px; max-width: 1400px; margin: 0 auto 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+        #map { height: 550px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+        .sidebar { display: flex; flex-direction: column; gap: 15px; }
+
+        .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1400px; margin: auto; }
+
+        .legend-item { margin: 5px 0; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🅿️ Parkshare — Opportunités de Stationnement en France</h1>
+        <p>Dashboard connecté à la base SQLite | Données simulées (Faker)</p>
+    </header>
+
+    <div class="stats-bar" id="statsBar">Chargement...</div>
+
+    <div class="filters">
+        <strong>Score min :</strong>
+        <input type="range" id="scoreFilter" min="0" max="100" value="0">
+        <span id="scoreVal">0</span>
+
+        <strong style="margin-left: 20px;">Région :</strong>
+        <select id="regionFilter"><option value="">Toutes</option></select>
+    </div>
+
+    <div class="dashboard-grid">
+        <div id="map"></div>
+        <div class="sidebar">
+            <div class="card">
+                <h3>🏆 Classement des villes</h3>
+                <canvas id="cityChart" height="300"></canvas>
+            </div>
+            <div class="card">
+                <h4>Légende</h4>
+                <div class="legend-item">🟢 <strong>80+</strong> : Pénurie critique — Déployer en priorité</div>
+                <div class="legend-item">🟡 <strong>50-79</strong> : Zone tendue — Bon potentiel</div>
+                <div class="legend-item">🔴 <strong>&lt;50</strong> : Parking accessible — Faible intérêt</div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="bottom-row" style="margin-top: 20px;">
+        <div class="card">
+            <h3>📊 Score moyen par région</h3>
+            <canvas id="regionChart" height="250"></canvas>
+        </div>
+        <div class="card">
+            <h3>📈 Répartition des catégories de demande</h3>
+            <canvas id="demandChart" height="250"></canvas>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

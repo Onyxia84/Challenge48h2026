@@ -1,0 +1,20 @@
+{
+  "name": "parkshare-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard pour l'étude de marché Parkshare",
+  "main": "server.js",
+  "scripts": {
+    "init-db": "node database/init_db.js",
+    "seed-db": "node database/seed_db.js",
+    "setup": "node database/init_db.js && node database/seed_db.js && node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.4.0",
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "express": "^4.22.1",
+    "sqlite3": "^5.1.6"
+  }
+}
