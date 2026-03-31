@@ -1,4 +1,6 @@
-# Infra — Parkshare Dashboard
+cat > ~/Challenge48h2026/infra/README.md << 'EOF'
+
+# Infra — Parkshare Challenge 48h
 
 ## Architecture
 
@@ -6,151 +8,99 @@
 Internet
    │
    ▼
-Nginx (hôte VPS) — HTTPS 443 / redirect 80→443
-   │  reverse proxy
-   ▼
-Docker : parkshare_dashboard (Node.js:3000)
+[51.77.216.210:80/443]
+   │
+Nginx (système, CT1)  ← HTTPS via Let's Encrypt
    │
    ▼
-Volume Docker : sqlite_data  (/app/database/parkshare.db)
+[localhost:3000]
+   │
+Docker (dashboard)  ← Node.js + Express + SQLite
 ```
 
-| Composant        | Technologie              | Exposition          |
-|------------------|--------------------------|---------------------|
-| Dashboard        | Node.js / Express        | Interne (port 3000) |
-| Base de données  | SQLite (volume Docker)   | Interne uniquement  |
-| Reverse proxy    | Nginx + Let's Encrypt    | Publique (443/80)   |
+### Services
 
-> La base de données n'est jamais exposée à l'extérieur. Seul Nginx est en frontal.
+| Service          | Technologie       | Port   | Accès             |
+| ---------------- | ----------------- | ------ | ------------------ |
+| Reverse proxy    | Nginx (système)  | 80/443 | Public             |
+| Dashboard        | Node.js + Express | 3000   | Interne uniquement |
+| Base de données | SQLite            | —     | Volume Docker      |
+
+### Réseau
+
+- **vmbr0** : bridge public (`51.77.216.210/24`)
+- **vmbr1** : bridge privé NAT (`10.0.0.1/24`)
+- **CT1** : `10.0.0.10` — héberge Nginx + Docker
+- Port forwarding : `51.77.216.210:80/443` → `10.0.0.10:80/443`---
 
 ---
 
-## Prérequis
+## Accès
 
-- Docker >= 24 et Docker Compose >= 2
-- Nginx installé sur le VPS hôte
-- Certbot installé sur le VPS hôte
-- Un domaine/sous-domaine pointant vers l'IP du VPS (ici via DuckDNS)
-
----
-
-## Déploiement
-
-### 1. Cloner le dépôt sur le VPS
-
-```bash
-git clone <url-du-repo> Challenge48h2026
-cd Challenge48h2026
-```
-
-### 2. Variables d'environnement
-
-Copier le fichier exemple et renseigner les valeurs :
-
-```bash
-cp .env.example .env
-# Éditer .env avec les valeurs réelles
-```
-
-### 3. Démarrer le container
-
-Depuis le dossier `infra/` :
-
-```bash
-cd infra
-docker compose up -d --build
-```
-
-Le dashboard démarre sur `http://localhost:3000`.  
-Au premier lancement, l'entrypoint initialise et peuple automatiquement la base SQLite.
-
-### 4. Configurer Nginx
-
-Copier la configuration dans Nginx :
-
-```bash
-sudo cp infra/nginx/default.conf /etc/nginx/sites-available/parkshare
-sudo ln -s /etc/nginx/sites-available/parkshare /etc/nginx/sites-enabled/parkshare
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-### 5. Certificat HTTPS (Let's Encrypt)
-
-```bash
-sudo certbot --nginx -d parkshare-dashboard.duckdns.org
-```
-
-Certbot modifie automatiquement la config Nginx pour injecter les chemins de certificats.  
-Le renouvellement automatique est géré par le timer systemd de Certbot.
-
----
-
-## URL d'accès
-
-| Service   | URL                                          |
-|-----------|----------------------------------------------|
-| Dashboard | https://parkshare-dashboard.duckdns.org      |
-
-Le HTTP (port 80) redirige automatiquement vers HTTPS.
+| Service          | URL                                     |
+| ---------------- | --------------------------------------- |
+| Dashboard        | https://parkshare-dashboard.duckdns.org |
+| Dashboard (HTTP) | http://parkshare-dashboard.duckdns.org  |
 
 ---
 
 ## Variables d'environnement
 
-Voir [`.env.example`](../.env.example) à la racine du dépôt.
+Voir `.env.example` à la racine du projet.
 
-| Variable | Description | Exemple |
-|----------|-------------|---------|
-| `PORT`   | Port d'écoute du dashboard | `3000` |
+```bash
+cp .env.example .env
+# Remplir les valeurs dans .env
+```
 
-> Ne jamais committer le fichier `.env` avec des valeurs réelles. Il est listé dans `.gitignore`.
+| Variable           | Description              | Exemple                             |
+| ------------------ | ------------------------ | ----------------------------------- |
+| `DASHBOARD_PORT` | Port du dashboard        | `3000`                            |
+| `SQLITE_DB_PATH` | Chemin de la base SQLite | `/app/database/parkshare.db`      |
+| `DOMAIN`         | Nom de domaine           | `parkshare-dashboard.duckdns.org` |
 
 ---
 
 ## Commandes utiles
 
 ```bash
-# Voir les logs du container
-docker compose logs -f dashboard
+# Voir les logs en temps réel
+docker compose logs -f
+
+# Redémarrer le dashboard
+docker compose restart dashboard
 
 # Arrêter la stack
 docker compose down
 
-# Reconstruire l'image après modification du code
-docker compose up -d --build
+# Arrêter et supprimer les volumes (⚠ supprime la DB)
+docker compose down -v
 
-# Accéder au shell du container
-docker compose exec dashboard sh
+# Vérifier l'état des conteneurs
+docker compose ps
 
-# Vérifier le statut Nginx
-sudo systemctl status nginx
-
-# Renouveler le certificat manuellement
-sudo certbot renew --dry-run
-```
-
----
-
-## Structure des fichiers
-
-```
-infra/
-├── docker-compose.yml   # Orchestration des services
-├── nginx/
-│   └── default.conf     # Config reverse proxy + HTTPS
-└── README.md            # Ce fichier
-
-app/
-├── Dockerfile           # Image Node.js 20 Alpine
-└── entrypoint.sh        # Init BDD + démarrage serveur
+# Accéder au shell du conteneur
+docker exec -it parkshare_dashboard sh
 ```
 
 ---
 
 ## Sécurité
 
-- Les secrets sont gérés via variables d'environnement (fichier `.env` non versionné)
-- La base de données SQLite est dans un volume Docker interne, non exposée
-- Seul Nginx est accessible depuis l'extérieur (ports 80 et 443)
-- HTTPS activé via Let's Encrypt avec redirection forcée depuis HTTP
-- L'image Docker utilise `node:20-alpine` (surface d'attaque minimale)
+- **Secrets** : gérés via `.env` (jamais commité — voir `.gitignore`)
+- **Base de données** : SQLite dans un volume Docker, non exposée
+- **Pare-feu** : ufw actif sur CT1 (ports 22, 80, 443 uniquement)
+- **HTTPS** : certificat Let's Encrypt via Certbot (renouvellement automatique)
+- **Réseau** : CT1 en IP privée `10.0.0.10`, jamais exposé directement
+
+---
+
+## Structure
+
+```
+infra/
+├── docker-compose.yml   ← Orchestration des services
+├── nginx/
+│   └── default.conf     ← Config reverse proxy + HTTPS
+└── README.md            ← Ce fichier
+```
