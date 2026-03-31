@@ -1,30 +1,22 @@
-// Variable globale pour stocker les données actuellement chargées
 let allCitiesData = [];
 
 // ========== MAP ==========
-// 🚨 OPTIMISATION 1 : preferCanvas force l'utilisation de la carte graphique
-const map = L.map('map', {
-    preferCanvas: true
-}).setView([46.5, 2.5], 6);
+const map = L.map('map', { preferCanvas: true }).setView([46.5, 2.5], 6);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap'
 }).addTo(map);
 
-// Utilisation d'un LayerGroup pour gérer et effacer les points ultra rapidement
 let markersLayer = L.layerGroup().addTo(map);
-
 let cityChart, regionChart, demandChart;
 
 function getColor(score) {
-    return score > 80 ? '#28a745' : score > 50 ? '#ffc107' : '#dc3545';
+    if (score >= 80) return '#dc3545'; // Rouge
+    if (score >= 65) return '#ffc107'; // Orange
+    return '#28a745'; // Vert
 }
 
-// 1. ÉCOUTER LES MOUVEMENTS DE LA CARTE
-// 🚨 OPTIMISATION 2 : À chaque déplacement ou zoom, on relance la requête API avec la nouvelle zone visible
-map.on('moveend', () => {
-    updateDashboard();
-});
+map.on('moveend', () => { updateDashboard(); });
 
 // ========== STATS ==========
 async function loadStats() {
@@ -41,86 +33,97 @@ async function loadStats() {
 async function loadRegions() {
     const regions = await (await fetch('/api/regions/list')).json();
     const select = document.getElementById('regionFilter');
+    select.innerHTML = '<option value="">Toutes</option>'; 
     regions.forEach(r => {
         const opt = document.createElement('option');
-        opt.value = r.region;
-        opt.textContent = r.region;
+        opt.value = r.id;          
+        opt.textContent = r.name;  
         select.appendChild(opt);
     });
 }
 
-// ========== DASHBOARD PRINCIPAL (Chargement des données & Carte) ==========
+// ========== DASHBOARD PRINCIPAL ==========
 async function updateDashboard() {
-    const minScore = document.getElementById('scoreFilter').value;
+    const maxScore = document.getElementById('scoreFilter').value;
     const region = document.getElementById('regionFilter').value;
 
-    // 🚨 OPTIMISATION 3 : On récupère les limites visibles de la carte
     const bounds = map.getBounds();
     const minLat = bounds.getSouth();
     const maxLat = bounds.getNorth();
     const minLng = bounds.getWest();
     const maxLng = bounds.getEast();
 
-    // On ajoute les limites à l'URL pour que le serveur filtre (max 1500 points)
-    let url = `/api/cities?minScore=${minScore}&minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
-    if (region && region !== 'Toutes') {
+    let url = `/api/cities?maxScore=${maxScore}&minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
+    if (region && region !== '') {
         url += `&region=${encodeURIComponent(region)}`;
     }
 
-    // On récupère uniquement les données de la zone visible
     allCitiesData = await (await fetch(url)).json();
 
-    // --- Carte ---
-    // On efface les anciens points d'un seul coup
     markersLayer.clearLayers();
 
     allCitiesData.forEach(city => {
-        // Le circleMarker est dessiné sur le Canvas, c'est ultra léger
         const m = L.circleMarker([city.lat, city.lng], {
-            radius: Math.max(4, city.opportunity_score / 10), // Taille légèrement réduite pour la lisibilité
+            radius: 6,
             fillColor: getColor(city.opportunity_score),
             color: '#fff',
-            weight: 1, // Bordure plus fine pour la performance
+            weight: 1,
             fillOpacity: 0.85
         });
 
         m.bindPopup(`
-            <strong>${city.city_name}</strong> (#${city.rank})<br>
-            📍 ${city.region}<br>
+            <strong>${city.city_name}</strong><br>
+            📍 Dép: ${city.region}<br>
             🎯 Score : <strong>${city.opportunity_score}/100</strong><br>
-            🅿️ Places étudiées : ${city.total_spots.toLocaleString()}<br>
-            📈 Demande : ${city.demand_category}
+            🅿️ Places : ${city.total_spots ? city.total_spots.toLocaleString() : 'N/A'}<br>
+            📈 Intérêt : ${city.demand_category}
         `);
 
         markersLayer.addLayer(m);
     });
 
-    // Dès qu'on a mis à jour la carte, on met à jour les graphiques
     updateChartsWithVisibleCities();
 }
 
 // ========== MISE À JOUR DES GRAPHIQUES ==========
-function updateChartsWithVisibleCities() {
-    // Plus besoin de filtrer géographiquement ici, l'API s'en est déjà chargée !
+async function updateChartsWithVisibleCities() {
     if (!allCitiesData || allCitiesData.length === 0) {
         if (cityChart) cityChart.destroy();
         if (demandChart) demandChart.destroy();
         return;
     }
 
-    // --- Graphique villes (les 30 meilleures visibles pour ne pas surcharger le graph) ---
+    // --- Graphique villes : On groupe et on nettoie les arrondissements ---
+    const cityMap = new Map();
+    allCitiesData.forEach(d => {
+        // Enlève les chiffres et mentions d'arrondissements (ex: PARIS 15, LYON 3EME, MARSEILLE 8E ARRONDISSEMENT)
+        let cleanName = d.city_name.toUpperCase()
+            .replace(/\s\d+(ER|EME|IEME|ÈME|E)?(\sARRONDISSEMENT)?$/i, '')
+            .trim();
+
+        if (!cityMap.has(cleanName)) {
+            cityMap.set(cleanName, { name: cleanName, totalScore: 0, count: 0 });
+        }
+        cityMap.get(cleanName).totalScore += d.opportunity_score;
+        cityMap.get(cleanName).count += 1;
+    });
+
+    const groupedCities = Array.from(cityMap.values()).map(c => ({
+        city_name: c.name,
+        opportunity_score: Math.round(c.totalScore / c.count)
+    }));
+
+    // Trie pour avoir les scores les plus faibles (les plus intéressants) en premier
+    const sortedCities = groupedCities.sort((a, b) => a.opportunity_score - b.opportunity_score).slice(0, 20);
+
     const ctx1 = document.getElementById('cityChart').getContext('2d');
     if (cityChart) cityChart.destroy();
-
-    // On trie les villes par score et on ne garde que le top 30 pour le graphique
-    const sortedCities = [...allCitiesData].sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 30);
-
     cityChart = new Chart(ctx1, {
         type: 'bar',
         data: {
             labels: sortedCities.map(d => d.city_name),
             datasets: [{
-                label: 'Score',
+                label: 'Score Moyen',
                 data: sortedCities.map(d => d.opportunity_score),
                 backgroundColor: sortedCities.map(d => getColor(d.opportunity_score))
             }]
@@ -133,26 +136,33 @@ function updateChartsWithVisibleCities() {
         }
     });
 
-    // --- Graphique demande (donut) ---
-    const demandCounts = {};
-    allCitiesData.forEach(d => { demandCounts[d.demand_category] = (demandCounts[d.demand_category] || 0) + 1; });
+    // --- Graphique demande ---
+    const demandCategories = ['Très intéressant', 'Potentiel moyen', 'Moins intéressant'];
+    const bgColors = ['#28a745', '#ffc107', '#dc3545']; // Vert, Jaune, Rouge
+
+    const demandCounts = { 'Très intéressant': 0, 'Potentiel moyen': 0, 'Moins intéressant': 0 };
+    allCitiesData.forEach(d => { 
+        if (demandCounts[d.demand_category] !== undefined) {
+            demandCounts[d.demand_category]++;
+        }
+    });
 
     const ctx3 = document.getElementById('demandChart').getContext('2d');
     if (demandChart) demandChart.destroy();
     demandChart = new Chart(ctx3, {
         type: 'doughnut',
         data: {
-            labels: Object.keys(demandCounts),
+            labels: demandCategories,
             datasets: [{
-                data: Object.values(demandCounts),
-                backgroundColor: ['#dc3545', '#ffc107', '#17a2b8', '#28a745']
+                data: demandCategories.map(cat => demandCounts[cat]),
+                backgroundColor: bgColors
             }]
         },
         options: { responsive: true }
     });
 }
 
-// ========== GRAPHIQUE RÉGIONAL (indépendant des filtres) ==========
+// ========== GRAPHIQUE RÉGIONAL ==========
 async function loadRegionChart() {
     const regions = await (await fetch('/api/regions')).json();
     const ctx2 = document.getElementById('regionChart').getContext('2d');
@@ -177,19 +187,27 @@ async function loadRegionChart() {
 }
 
 // ========== EVENTS ==========
-document.getElementById('scoreFilter').addEventListener('input', (e) => {
-    document.getElementById('scoreVal').innerText = e.target.value;
+
+const scoreFilter = document.getElementById('scoreFilter');
+const scoreVal = document.getElementById('scoreVal');
+
+// 1. Met à jour le chiffre en temps réel quand on glisse la barre (sans planter le serveur)
+scoreFilter.addEventListener('input', (e) => {
+    scoreVal.innerText = e.target.value;
+});
+
+// 2. Recharge la carte UNIQUEMENT quand on lâche le clic
+scoreFilter.addEventListener('change', () => {
     updateDashboard();
 });
 
-document.getElementById('regionFilter').addEventListener('change', () => updateDashboard());
+document.getElementById('regionFilter').addEventListener('change', () => {
+    updateDashboard();
+});
 
 // ========== INIT ==========
 loadStats();
 loadRegions();
-// On attend un court instant au chargement pour que la carte ait bien sa taille finale
-setTimeout(() => {
-    updateDashboard();
-}, 200);
+setTimeout(() => { updateDashboard(); }, 200);
 loadRegionChart();
 

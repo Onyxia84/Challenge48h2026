@@ -41,12 +41,11 @@
     <div class="stats-bar" id="statsBar">Chargement...</div>
 
     <div class="filters">
-        <strong>Score min :</strong>
-        <input type="range" id="scoreFilter" min="0" max="100" value="0">
-        <span id="scoreVal">0</span>
+        <label for="scoreFilter">Score max : <span id="scoreVal">100</span></label>
+        <input type="range" id="scoreFilter" min="50" max="100" value="100" dir="rtl">
 
-        <strong style="margin-left: 20px;">Région :</strong>
-        <select id="regionFilter"><option value="">Toutes</option></select>
+        <strong style="margin-left: 20px;">Département :</strong>
+        <select id="regionFilter"><option value="">Tous</option></select>
     </div>
 
     <div class="dashboard-grid">
@@ -58,17 +57,16 @@
             </div>
             <div class="card">
                 <h4>Légende</h4>
-                <div class="legend-item">🟢 <strong>80+</strong> : Pénurie critique — Déployer en priorité</div>
-                <div class="legend-item">🟡 <strong>50-79</strong> : Zone tendue — Bon potentiel</div>
-                <div class="legend-item">🔴 <strong>&lt;50</strong> : Parking accessible — Faible intérêt</div>
+                <div class="legend-item">🟢 <strong>Moins de 65</strong> : Très intéressant (Pénurie forte)</div>
+                <div class="legend-item">🟡 <strong>65 à 79</strong> : Potentiel moyen (Zone tendue)</div>
+                <div class="legend-item">🔴 <strong>80 à 100</strong> : Moins intéressant (Parking accessible)</div>
             </div>
         </div>
     </div>
 
-    
     <div class="bottom-row" style="margin-top: 20px;">
         <div class="card">
-            <h3>📊 Score moyen par région</h3>
+            <h3>📊 Score moyen par département</h3>
             <canvas id="regionChart" height="250"></canvas>
         </div>
         <div class="card">
@@ -82,3 +80,4 @@
     <script src="dashboard.js"></script>
 </body>
 </html>
+
