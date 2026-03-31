@@ -3,7 +3,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 
 const app = express();
-const db = new Database(path.join(__dirname, 'database', 'parkshare.db'));
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'database', 'parkshare.db');
+const db = new Database(DB_PATH);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -138,7 +139,7 @@ app.get('/api/villes/ranking', (req, res) => {
     }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
 });

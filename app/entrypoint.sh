@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-DB_PATH="/app/database/parkshare.db"
+DB_PATH="${DB_PATH:-/app/database/parkshare.db}"
 
 if [ ! -f "$DB_PATH" ]; then
   echo "Base de données introuvable, initialisation..."

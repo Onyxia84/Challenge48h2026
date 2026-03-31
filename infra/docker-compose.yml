@@ -6,8 +6,10 @@ services:
     build: ../app
     container_name: parkshare_dashboard
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
-      - "3000:3000"
+      - "${PORT}:${PORT}"
     volumes:
       - sqlite_data:/app/database
     networks:
