@@ -48,18 +48,10 @@ Docker (dashboard)  ← Node.js + Express + SQLite
 
 Voir `.env.example` à la racine du projet.
 
-```bash
-cp .env.example .env
-# Remplir les valeurs dans .env
-```
-
-| Variable           | Description              | Exemple                             |
-| ------------------ | ------------------------ | ----------------------------------- |
-| `DASHBOARD_PORT` | Port du dashboard        | `3000`                            |
-| `SQLITE_DB_PATH` | Chemin de la base SQLite | `/app/database/parkshare.db`      |
-| `DOMAIN`         | Nom de domaine           | `parkshare-dashboard.duckdns.org` |
-
----
+| Variable           | Description              | Exemple                        |
+| ------------------ | ------------------------ | ------------------------------ |
+| `DASHBOARD_PORT` | Port du dashboard        | `3000`                       |
+| `SQLITE_DB_PATH` | Chemin de la base SQLite | `/app/database/parkshare.db` |
 
 ## Commandes utiles
 
@@ -100,6 +92,7 @@ docker exec -it parkshare_dashboard sh
 ```
 infra/
 ├── docker-compose.yml   ← Orchestration des services
+├── .env.exemple
 ├── nginx/
 │   └── default.conf     ← Config reverse proxy + HTTPS
 └── README.md            ← Ce fichier
