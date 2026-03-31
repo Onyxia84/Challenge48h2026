@@ -25,6 +25,9 @@ app.get('/api/cities', (req, res) => {
     try {
         const minScore = parseInt(req.query.minScore) || 0;
         const region = req.query.region || 'Toutes';
+        
+        // Coordonnées de la vue actuelle de la carte envoyées par le front
+        const { minLat, maxLat, minLng, maxLng } = req.query;
 
         let query = `
             SELECT 
@@ -41,10 +44,20 @@ app.get('/api/cities', (req, res) => {
         `;
         const params = [minScore];
 
+        // Filtre de région
         if (region && region !== 'Toutes') {
             query += ` AND region = ?`;
             params.push(region);
         }
+
+        // Filtre géographique (Seulement ce qui est à l'écran !)
+        if (minLat && maxLat && minLng && maxLng) {
+            query += ` AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?`;
+            params.push(minLat, maxLat, minLng, maxLng);
+        }
+
+        // 🚨 MAGIE ICI : On prend les meilleurs scores et on limite à 1500 points !
+        query += ` ORDER BY opportunity_score DESC LIMIT 1500`;
 
         const rows = db.prepare(query).all(params);
         res.json(rows);

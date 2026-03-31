@@ -1,14 +1,19 @@
 // Variable globale pour stocker les données actuellement chargées
 let allCitiesData = [];
 
-
 // ========== MAP ==========
-const map = L.map('map').setView([46.5, 2.5], 6);
+// 🚨 OPTIMISATION 1 : preferCanvas force l'utilisation de la carte graphique
+const map = L.map('map', {
+    preferCanvas: true
+}).setView([46.5, 2.5], 6);
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap'
 }).addTo(map);
 
-let markers = [];
+// Utilisation d'un LayerGroup pour gérer et effacer les points ultra rapidement
+let markersLayer = L.layerGroup().addTo(map);
+
 let cityChart, regionChart, demandChart;
 
 function getColor(score) {
@@ -16,9 +21,9 @@ function getColor(score) {
 }
 
 // 1. ÉCOUTER LES MOUVEMENTS DE LA CARTE
-// À chaque déplacement ou zoom, on met à jour les graphiques
+// 🚨 OPTIMISATION 2 : À chaque déplacement ou zoom, on relance la requête API avec la nouvelle zone visible
 map.on('moveend', () => {
-    updateChartsWithVisibleCities();
+    updateDashboard();
 });
 
 // ========== STATS ==========
@@ -49,25 +54,37 @@ async function updateDashboard() {
     const minScore = document.getElementById('scoreFilter').value;
     const region = document.getElementById('regionFilter').value;
 
-    const url = `/api/cities?minScore=${minScore}` + (region ? `&region=${encodeURIComponent(region)}` : '');
-    
-    // On sauvegarde les données globalement pour les réutiliser au zoom
+    // 🚨 OPTIMISATION 3 : On récupère les limites visibles de la carte
+    const bounds = map.getBounds();
+    const minLat = bounds.getSouth();
+    const maxLat = bounds.getNorth();
+    const minLng = bounds.getWest();
+    const maxLng = bounds.getEast();
+
+    // On ajoute les limites à l'URL pour que le serveur filtre (max 1500 points)
+    let url = `/api/cities?minScore=${minScore}&minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
+    if (region && region !== 'Toutes') {
+        url += `&region=${encodeURIComponent(region)}`;
+    }
+
+    // On récupère uniquement les données de la zone visible
     allCitiesData = await (await fetch(url)).json();
 
     // --- Carte ---
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
+    // On efface les anciens points d'un seul coup
+    markersLayer.clearLayers();
 
     allCitiesData.forEach(city => {
+        // Le circleMarker est dessiné sur le Canvas, c'est ultra léger
         const m = L.circleMarker([city.lat, city.lng], {
-            radius: Math.max(6, city.opportunity_score / 7),
+            radius: Math.max(4, city.opportunity_score / 10), // Taille légèrement réduite pour la lisibilité
             fillColor: getColor(city.opportunity_score),
             color: '#fff',
-            weight: 2,
+            weight: 1, // Bordure plus fine pour la performance
             fillOpacity: 0.85
-        }).addTo(map);
+        });
 
-            m.bindPopup(`
+        m.bindPopup(`
             <strong>${city.city_name}</strong> (#${city.rank})<br>
             📍 ${city.region}<br>
             🎯 Score : <strong>${city.opportunity_score}/100</strong><br>
@@ -75,33 +92,28 @@ async function updateDashboard() {
             📈 Demande : ${city.demand_category}
         `);
 
-        markers.push(m);
+        markersLayer.addLayer(m);
     });
 
     // Dès qu'on a mis à jour la carte, on met à jour les graphiques
     updateChartsWithVisibleCities();
 }
 
-// ========== MISE À JOUR DES GRAPHIQUES SELON LE ZOOM ==========
+// ========== MISE À JOUR DES GRAPHIQUES ==========
 function updateChartsWithVisibleCities() {
-    // Si aucune donnée n'est chargée, on s'arrête
-    if (!allCitiesData || allCitiesData.length === 0) return;
+    // Plus besoin de filtrer géographiquement ici, l'API s'en est déjà chargée !
+    if (!allCitiesData || allCitiesData.length === 0) {
+        if (cityChart) cityChart.destroy();
+        if (demandChart) demandChart.destroy();
+        return;
+    }
 
-    // Récupérer les limites visibles de la carte
-    const bounds = map.getBounds();
-
-    // Filtrer les villes qui sont strictement dans l'écran
-    const visibleCities = allCitiesData.filter(city => bounds.contains([city.lat, city.lng]));
-
-    // S'il n'y a aucune ville visible, on évite de planter les graphiques
-    if (visibleCities.length === 0) return;
-
-    // --- Graphique villes (seulement les visibles) ---
+    // --- Graphique villes (les 30 meilleures visibles pour ne pas surcharger le graph) ---
     const ctx1 = document.getElementById('cityChart').getContext('2d');
     if (cityChart) cityChart.destroy();
-    
-    // Astuce : on trie les villes par score pour que le graphique soit lisible
-    const sortedCities = [...visibleCities].sort((a, b) => b.opportunity_score - a.opportunity_score);
+
+    // On trie les villes par score et on ne garde que le top 30 pour le graphique
+    const sortedCities = [...allCitiesData].sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 30);
 
     cityChart = new Chart(ctx1, {
         type: 'bar',
@@ -121,9 +133,9 @@ function updateChartsWithVisibleCities() {
         }
     });
 
-    // --- Graphique demande (donut) (seulement les visibles) ---
+    // --- Graphique demande (donut) ---
     const demandCounts = {};
-    visibleCities.forEach(d => { demandCounts[d.demand_category] = (demandCounts[d.demand_category] || 0) + 1; });
+    allCitiesData.forEach(d => { demandCounts[d.demand_category] = (demandCounts[d.demand_category] || 0) + 1; });
 
     const ctx3 = document.getElementById('demandChart').getContext('2d');
     if (demandChart) demandChart.destroy();
@@ -138,7 +150,6 @@ function updateChartsWithVisibleCities() {
         },
         options: { responsive: true }
     });
-    
 }
 
 // ========== GRAPHIQUE RÉGIONAL (indépendant des filtres) ==========
@@ -176,5 +187,9 @@ document.getElementById('regionFilter').addEventListener('change', () => updateD
 // ========== INIT ==========
 loadStats();
 loadRegions();
-updateDashboard();
+// On attend un court instant au chargement pour que la carte ait bien sa taille finale
+setTimeout(() => {
+    updateDashboard();
+}, 200);
 loadRegionChart();
+
